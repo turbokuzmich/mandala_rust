@@ -1,3 +1,6 @@
+mod calculation;
+
+use calculation::calculate_mandala;
 use iced::widget::{TextInput, button, column, container, text};
 use iced::{Element, Fill, Result, alignment};
 
@@ -76,5 +79,8 @@ impl Default for State {
 }
 
 fn main() -> Result {
-    iced::run("Мандала", State::update, State::view)
+    let text = "хуй".to_string();
+    let _ = calculate_mandala(text.as_str());
+    Ok(())
+    // iced::run("Мандала", State::update, State::view)
 }
