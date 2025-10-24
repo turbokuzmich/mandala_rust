@@ -33,8 +33,7 @@ pub fn calculate_mandala(text: &str) -> Result<Vec<Vec<u16>>, String> {
     });
 
     if indexes.len() < 2 {
-        indexes.push(0);
-        indexes.push(0);
+        return Err("Слишком короткий текст".to_string());
     }
 
     while indexes.len() < 8 {
