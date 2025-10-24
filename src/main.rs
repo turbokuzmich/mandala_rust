@@ -2,7 +2,7 @@ mod calculation;
 
 use calculation::calculate_mandala;
 use iced::widget::{TextInput, button, column, container, text};
-use iced::{Element, Fill, Result, alignment};
+use iced::{Element, Fill, Result as IcedResult, alignment};
 
 #[derive(Debug, Clone)]
 enum Message {
@@ -20,6 +20,7 @@ enum Screen {
 struct State {
     screen: Screen,
     input: String,
+    calculation: Option<Result<Vec<Vec<u16>>, String>>,
 }
 
 impl State {
@@ -30,10 +31,12 @@ impl State {
             }
             Message::Submit => {
                 self.screen = Screen::Result;
+                self.calculation = Some(calculate_mandala(&self.input));
+                println!("{:?}", self.calculation);
             }
         }
     }
-    fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<'_, Message> {
         match self.screen {
             Screen::Input => {
                 let text = self.input.trim();
@@ -58,7 +61,6 @@ impl State {
                         .align_x(alignment::Horizontal::Right)
                         .spacing(10),
                 )
-                // .center_x(Fill)
                 .height(Fill)
                 .align_y(alignment::Vertical::Center)
                 .padding(20)
@@ -74,13 +76,13 @@ impl Default for State {
         State {
             screen: Screen::Input,
             input: "".to_string(),
+            calculation: None,
         }
     }
 }
 
-fn main() -> Result {
-    let text = "хуй".to_string();
-    let _ = calculate_mandala(text.as_str());
-    Ok(())
-    // iced::run("Мандала", State::update, State::view)
+fn main() -> IcedResult {
+    // let text = "хуй".to_string();
+    // let _ = calculate_mandala(text.as_str());
+    iced::run("Мандала", State::update, State::view)
 }

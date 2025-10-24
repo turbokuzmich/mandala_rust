@@ -22,7 +22,7 @@ fn get_sum(index_a: u16, index_b: u16) -> u16 {
     if sum > 9 { sum - 9 } else { sum }
 }
 
-pub fn calculate_mandala(text: &str) -> Result<(), String> {
+pub fn calculate_mandala(text: &str) -> Result<Vec<Vec<u16>>, String> {
     let mut indexes: Vec<u16> = text.chars().fold(vec![], |mut acc, letter| {
         let lower_letter = letter.to_lowercase().next().unwrap();
         let index = SYMBOL_MAP.get(&lower_letter);
@@ -44,10 +44,10 @@ pub fn calculate_mandala(text: &str) -> Result<(), String> {
         indexes.push(sum);
     }
 
+    // FIXME reduce to a row of size 8
+
     let mut result: Vec<Vec<u16>> = Vec::with_capacity(indexes.len());
     let size = indexes.len();
-
-    result.push(indexes);
 
     for index in 1..size {
         let previous = result.get(index - 1).unwrap();
@@ -64,7 +64,5 @@ pub fn calculate_mandala(text: &str) -> Result<(), String> {
         result.push(row);
     }
 
-    print!("{:?}", result);
-
-    Ok(())
+    Ok(result)
 }
