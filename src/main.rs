@@ -1,8 +1,12 @@
 mod calculation;
 
 use calculation::calculate_mandala;
+use iced::mouse;
+use iced::widget::canvas::{Cache, Canvas, Geometry, Program};
 use iced::widget::{TextInput, button, column, container, text};
-use iced::{Element, Fill, Result as IcedResult, alignment};
+use iced::{
+    Color, Element, Fill, Point, Rectangle, Renderer, Result as IcedResult, Theme, alignment,
+};
 
 #[derive(Debug, Clone)]
 enum Message {
@@ -16,11 +20,44 @@ enum Screen {
     Result,
 }
 
+struct Mandala<'a> {
+    result: &'a Vec<Vec<u16>>,
+    cache: Cache<Renderer>,
+}
+
+impl<'a> Mandala<'a> {
+    fn new(result: &'a Vec<Vec<u16>>) -> Self {
+        println!("new: {:?}", result);
+        Self {
+            result,
+            cache: Cache::default(),
+        }
+    }
+}
+
+impl<'a> Program<Message> for Mandala<'a> {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        renderer: &Renderer,
+        _theme: &Theme,
+        bounds: Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<Geometry<Renderer>> {
+        let geometry = self.cache.draw(renderer, bounds.size(), |frame| {
+            frame.fill_rectangle(Point::new(0.0, 0.0), frame.size(), Color::WHITE);
+        });
+        vec![geometry]
+    }
+}
+
 #[derive(Debug, Clone)]
 struct State {
     screen: Screen,
     input: String,
-    calculation: Option<Result<Vec<Vec<u16>>, String>>,
+    calculation: Result<Vec<Vec<u16>>, String>,
 }
 
 impl State {
@@ -31,8 +68,7 @@ impl State {
             }
             Message::Submit => {
                 self.screen = Screen::Result;
-                self.calculation = Some(calculate_mandala(&self.input));
-                println!("{:?}", self.calculation);
+                self.calculation = calculate_mandala(&self.input);
             }
         }
     }
@@ -66,7 +102,21 @@ impl State {
                 .padding(20)
                 .into()
             }
-            _ => text(self.input.trim()).into(),
+            Screen::Result => match &self.calculation {
+                Ok(result) => container(
+                    column![
+                        text(&self.input).size(20),
+                        Canvas::new(Mandala::new(result)).width(Fill).height(Fill)
+                    ]
+                    .width(Fill)
+                    .align_x(alignment::Horizontal::Center),
+                )
+                .height(Fill)
+                .align_y(alignment::Vertical::Center)
+                .padding(20)
+                .into(),
+                Err(error) => text(error).into(),
+            },
         }
     }
 }
@@ -76,13 +126,11 @@ impl Default for State {
         State {
             screen: Screen::Input,
             input: "".to_string(),
-            calculation: None,
+            calculation: Err("Введите текст для мандалы".to_string()),
         }
     }
 }
 
 fn main() -> IcedResult {
-    // let text = "хуй".to_string();
-    // let _ = calculate_mandala(text.as_str());
     iced::run("Мандала", State::update, State::view)
 }
