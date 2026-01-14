@@ -94,3 +94,13 @@ pub fn calculate_mandala(text: &str) -> Result<Vec<Vec<u16>>, String> {
 
     Ok(result)
 }
+
+fn calculate_mandala_optimized(text: &str) -> Result<(), String> {
+    // let mut arr: [u8; 8] = [0; 8];
+
+    // for i in 0..9 {
+    //     arr[i] = i as u8;
+    // }
+
+    Ok(())
+}

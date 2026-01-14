@@ -5,9 +5,20 @@ use iced::widget::canvas::{Cache, Canvas, Geometry, Program, Text};
 use iced::widget::{TextInput, button, column, container, text};
 use iced::{
     Color, Element, Fill, Pixels, Point, Rectangle, Renderer, Result as IcedResult, Size, Theme,
-    alignment, color,
+    alignment, application, color,
 };
 use iced::{Vector, mouse};
+
+use svg::Document;
+use svg::node::element::Group;
+use svg::node::element::Line;
+
+use glam::Vec2;
+
+use printpdf::{
+    CurTransMat, Mm, Op, ParsedFont, PdfDocument, PdfPage, PdfSaveOptions, Point as PrintPdfPoint,
+    Pt, Svg, TextAlign, TextShapingOptions, XObjectTransform,
+};
 
 static COLORS: [Color; 9] = [
     color!(0xE6194B),
@@ -22,6 +33,10 @@ static COLORS: [Color; 9] = [
 ];
 
 static TEXT_SIZE: Pixels = Pixels(24.0);
+
+static ROBOTO_FONT: &[u8] = include_bytes!("./Roboto-Light.ttf");
+
+const SKETCH_SIZE: f32 = 2480.0;
 
 #[derive(Debug, Clone)]
 enum Message {
@@ -127,7 +142,7 @@ impl State {
             Screen::Input => {
                 let text = self.input.trim();
 
-                let text_input =
+                let input =
                     TextInput::new("Пожалуйста, введите текст для мандалы", self.input.as_str())
                         .on_input(Message::Type)
                         .on_submit_maybe(if text.is_empty() {
@@ -143,7 +158,7 @@ impl State {
                 });
 
                 container(
-                    column![text_input, submit_button]
+                    column![input, submit_button]
                         .align_x(alignment::Horizontal::Right)
                         .spacing(10),
                 )
@@ -184,5 +199,236 @@ impl Default for State {
 }
 
 fn main() -> IcedResult {
-    iced::run("Мандала", State::update, State::view)
+    // let app = application("Мандала", State::update, State::view);
+
+    // app.run()
+
+    let svg = generate_svg_mandala();
+    let saved = save_svg_as_pdf(
+        svg,
+        "программисты очень не любят собирать мандалы, потому что они очень сложные, но есть слово «нужно»",
+    );
+
+    match saved {
+        Ok(()) => println!("PDF saved successfully"),
+        Err(e) => println!("Error saving PDF: {}", e),
+    }
+
+    Ok(())
+}
+
+fn save_svg_as_pdf(svg: Document, text: &str) -> Result<(), String> {
+    let mut document = PdfDocument::new("Mandala");
+
+    let sketch_svg = Svg::parse(&svg.to_string(), &mut Vec::new()).map_err(|e| e.to_string())?;
+    let sketch_id = document.add_xobject(&sketch_svg);
+    let roboto_font = ParsedFont::from_bytes(ROBOTO_FONT, 0, &mut Vec::new()).unwrap();
+    let roboto_font_id = document.add_font(&roboto_font);
+
+    let text_options = TextShapingOptions {
+        max_width: Some(Mm(190.0).into_pt()),
+        align: TextAlign::Center,
+        ..TextShapingOptions::default()
+    };
+    let text = roboto_font.shape_text(text, &text_options, &roboto_font_id);
+
+    let mut ops: Vec<Op> = vec![
+        Op::UseXobject {
+            id: sketch_id,
+            transform: XObjectTransform {
+                translate_y: Some(Pt(200.0)),
+                ..XObjectTransform::default()
+            },
+        },
+        Op::SetFillColor {
+            col: printpdf::Color::Rgb(printpdf::Rgb {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                icc_profile: None,
+            }),
+        },
+    ];
+
+    ops.extend(text.get_ops(PrintPdfPoint::new(Mm(10.0), Mm(50.0))));
+
+    let page = PdfPage::new(Mm(210.0), Mm(297.0), ops);
+
+    let bytes = document
+        .with_pages(vec![page])
+        .save(&PdfSaveOptions::default(), &mut Vec::new());
+
+    std::fs::write("mandala.pdf", bytes).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+fn generate_svg_mandala() -> Document {
+    const HALF_SIZE: f32 = SKETCH_SIZE / 2.0 / 33.0;
+    let line_offset = ((HALF_SIZE * 2.0).powf(2.0) - HALF_SIZE.powf(2.0)).sqrt();
+
+    let build_line = |index: u8| -> Line {
+        let x = line_offset * index as f32;
+        let y1 = if index == 0 {
+            HALF_SIZE
+        } else {
+            HALF_SIZE * ((index - 1) as f32)
+        };
+        let idx = if index == 0 { 0 } else { index - 1 };
+        let count = 16 - idx;
+        let y2 = y1 + (count as f32) * HALF_SIZE * 2.0;
+
+        Line::new()
+            .set("x1", x)
+            .set("y1", y1)
+            .set("x2", x)
+            .set("y2", y2)
+            .set("stroke", "black")
+    };
+
+    let group1 = (0..=16)
+        .fold(Group::new(), |acc, index| acc.add(build_line(index)))
+        .set(
+            "transform",
+            format!("translate({} {})", SKETCH_SIZE / 2.0, 0.0),
+        );
+
+    let group2 = group1.clone().set(
+        "transform",
+        format!(
+            "translate({} {}) rotate(60 0 {})",
+            SKETCH_SIZE / 2.0,
+            0.0,
+            SKETCH_SIZE / 2.0,
+        ),
+    );
+
+    let group3 = group1.clone().set(
+        "transform",
+        format!(
+            "translate({} {}) rotate(120 0 {})",
+            SKETCH_SIZE / 2.0,
+            0.0,
+            SKETCH_SIZE / 2.0,
+        ),
+    );
+
+    let group4 = group1.clone().set(
+        "transform",
+        format!(
+            "translate({} {}) rotate(180 0 {})",
+            SKETCH_SIZE / 2.0,
+            0.0,
+            SKETCH_SIZE / 2.0,
+        ),
+    );
+
+    let group5 = group1.clone().set(
+        "transform",
+        format!(
+            "translate({} {}) rotate(240 0 {})",
+            SKETCH_SIZE / 2.0,
+            0.0,
+            SKETCH_SIZE / 2.0,
+        ),
+    );
+
+    let group6 = group1.clone().set(
+        "transform",
+        format!(
+            "translate({} {}) rotate(300 0 {})",
+            SKETCH_SIZE / 2.0,
+            0.0,
+            SKETCH_SIZE / 2.0,
+        ),
+    );
+
+    let group11 = (0..=16)
+        .fold(Group::new(), |acc, index| acc.add(build_line(index)))
+        .set(
+            "transform",
+            format!("translate({} {}) scale(-1 1)", SKETCH_SIZE / 2.0, 0.0),
+        );
+
+    let group21 = (0..=16)
+        .fold(Group::new(), |acc, index| acc.add(build_line(index)))
+        .set(
+            "transform",
+            format!(
+                "translate({} {}) scale(-1 1) rotate(60 0 {})",
+                SKETCH_SIZE / 2.0,
+                0.0,
+                SKETCH_SIZE / 2.0
+            ),
+        );
+
+    let group31 = (0..=16)
+        .fold(Group::new(), |acc, index| acc.add(build_line(index)))
+        .set(
+            "transform",
+            format!(
+                "translate({} {}) scale(-1 1) rotate(120 0 {})",
+                SKETCH_SIZE / 2.0,
+                0.0,
+                SKETCH_SIZE / 2.0
+            ),
+        );
+
+    let group41 = (0..=16)
+        .fold(Group::new(), |acc, index| acc.add(build_line(index)))
+        .set(
+            "transform",
+            format!(
+                "translate({} {}) scale(-1 1) rotate(180 0 {})",
+                SKETCH_SIZE / 2.0,
+                0.0,
+                SKETCH_SIZE / 2.0
+            ),
+        );
+
+    let group51 = (0..=16)
+        .fold(Group::new(), |acc, index| acc.add(build_line(index)))
+        .set(
+            "transform",
+            format!(
+                "translate({} {}) scale(-1 1) rotate(240 0 {})",
+                SKETCH_SIZE / 2.0,
+                0.0,
+                SKETCH_SIZE / 2.0
+            ),
+        );
+
+    let group61 = (0..=16)
+        .fold(Group::new(), |acc, index| acc.add(build_line(index)))
+        .set(
+            "transform",
+            format!(
+                "translate({} {}) scale(-1 1) rotate(300 0 {})",
+                SKETCH_SIZE / 2.0,
+                0.0,
+                SKETCH_SIZE / 2.0
+            ),
+        );
+
+    let svg = Document::new()
+        .set("width", SKETCH_SIZE as i32)
+        .set("height", SKETCH_SIZE as i32)
+        .set(
+            "viewBox",
+            format!("0 0 {} {}", SKETCH_SIZE as i32, SKETCH_SIZE as i32),
+        )
+        .add(group1)
+        .add(group2)
+        .add(group3)
+        .add(group4)
+        .add(group5)
+        .add(group6)
+        .add(group11)
+        .add(group21)
+        .add(group31)
+        .add(group41)
+        .add(group51)
+        .add(group61);
+
+    svg
 }

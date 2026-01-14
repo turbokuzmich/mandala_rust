@@ -5,3 +5,7 @@ edition = "2024"
 
 [dependencies]
 iced = { version = "0.13.1", features = ["canvas"] }
+svg = "0.13"
+printpdf = { version = "0.8.2", features = ["text_layout"] }
+dirs = "5.0"
+glam = "0.30.10"
