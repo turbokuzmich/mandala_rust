@@ -10,14 +10,14 @@ use iced::{
 use iced::{Vector, mouse};
 
 use svg::Document;
-use svg::node::element::Group;
-use svg::node::element::Line;
+use svg::node::Text as SvgTextNode;
+use svg::node::element::{Group, Line, Text as SvgText};
 
-use glam::Vec2;
+use glam::{Mat2, Vec2};
 
 use printpdf::{
-    CurTransMat, Mm, Op, ParsedFont, PdfDocument, PdfPage, PdfSaveOptions, Point as PrintPdfPoint,
-    Pt, Svg, TextAlign, TextShapingOptions, XObjectTransform,
+    Mm, Op, ParsedFont, PdfDocument, PdfPage, PdfSaveOptions, Point as PrintPdfPoint, Pt, Svg,
+    TextAlign, TextShapingOptions, XObjectTransform,
 };
 
 static COLORS: [Color; 9] = [
@@ -203,11 +203,12 @@ fn main() -> IcedResult {
 
     // app.run()
 
-    let svg = generate_svg_mandala();
-    let saved = save_svg_as_pdf(
-        svg,
-        "программисты очень не любят собирать мандалы, потому что они очень сложные, но есть слово «нужно»",
-    );
+    let text = "Программисты очень не любят собирать мандалы, потому что они очень сложные, но есть слово «нужно»";
+    let digits = calculate_mandala(text).unwrap();
+    println!("{:?}", digits);
+
+    let svg = generate_svg_mandala(&digits);
+    let saved = save_svg_as_pdf(svg, text);
 
     match saved {
         Ok(()) => println!("PDF saved successfully"),
@@ -263,20 +264,24 @@ fn save_svg_as_pdf(svg: Document, text: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn generate_svg_mandala() -> Document {
-    const HALF_SIZE: f32 = SKETCH_SIZE / 2.0 / 33.0;
-    let line_offset = ((HALF_SIZE * 2.0).powf(2.0) - HALF_SIZE.powf(2.0)).sqrt();
+fn generate_svg_mandala(digits: &Vec<Vec<u16>>) -> Document {
+    const SKETCH_HALF_SIZE: f32 = SKETCH_SIZE / 2.0;
+    const CELL_HALF_SIZE: f32 = SKETCH_HALF_SIZE / 33.0;
+    const CELL_THREE_FOURTHS_SIZE: f32 = CELL_HALF_SIZE + CELL_HALF_SIZE / 2.0;
+    let line_offset = ((CELL_HALF_SIZE * 2.0).powf(2.0) - CELL_HALF_SIZE.powf(2.0)).sqrt();
+    let half_line_offset = line_offset / 2.0;
+    let text_translation = Vec2::new(SKETCH_HALF_SIZE, SKETCH_HALF_SIZE);
 
     let build_line = |index: u8| -> Line {
         let x = line_offset * index as f32;
         let y1 = if index == 0 {
-            HALF_SIZE
+            CELL_HALF_SIZE
         } else {
-            HALF_SIZE * ((index - 1) as f32)
+            CELL_HALF_SIZE * ((index - 1) as f32)
         };
         let idx = if index == 0 { 0 } else { index - 1 };
         let count = 16 - idx;
-        let y2 = y1 + (count as f32) * HALF_SIZE * 2.0;
+        let y2 = y1 + (count as f32) * CELL_HALF_SIZE * 2.0;
 
         Line::new()
             .set("x1", x)
@@ -286,129 +291,52 @@ fn generate_svg_mandala() -> Document {
             .set("stroke", "black")
     };
 
-    let group1 = (0..=16)
-        .fold(Group::new(), |acc, index| acc.add(build_line(index)))
-        .set(
-            "transform",
-            format!("translate({} {})", SKETCH_SIZE / 2.0, 0.0),
-        );
+    let group_base = (0..=16).fold(Group::new(), |acc, index| acc.add(build_line(index)));
 
-    let group2 = group1.clone().set(
-        "transform",
-        format!(
-            "translate({} {}) rotate(60 0 {})",
-            SKETCH_SIZE / 2.0,
-            0.0,
-            SKETCH_SIZE / 2.0,
-        ),
-    );
-
-    let group3 = group1.clone().set(
-        "transform",
-        format!(
-            "translate({} {}) rotate(120 0 {})",
-            SKETCH_SIZE / 2.0,
-            0.0,
-            SKETCH_SIZE / 2.0,
-        ),
-    );
-
-    let group4 = group1.clone().set(
-        "transform",
-        format!(
-            "translate({} {}) rotate(180 0 {})",
-            SKETCH_SIZE / 2.0,
-            0.0,
-            SKETCH_SIZE / 2.0,
-        ),
-    );
-
-    let group5 = group1.clone().set(
-        "transform",
-        format!(
-            "translate({} {}) rotate(240 0 {})",
-            SKETCH_SIZE / 2.0,
-            0.0,
-            SKETCH_SIZE / 2.0,
-        ),
-    );
-
-    let group6 = group1.clone().set(
-        "transform",
-        format!(
-            "translate({} {}) rotate(300 0 {})",
-            SKETCH_SIZE / 2.0,
-            0.0,
-            SKETCH_SIZE / 2.0,
-        ),
-    );
-
-    let group11 = (0..=16)
-        .fold(Group::new(), |acc, index| acc.add(build_line(index)))
-        .set(
-            "transform",
-            format!("translate({} {}) scale(-1 1)", SKETCH_SIZE / 2.0, 0.0),
-        );
-
-    let group21 = (0..=16)
-        .fold(Group::new(), |acc, index| acc.add(build_line(index)))
-        .set(
-            "transform",
-            format!(
-                "translate({} {}) scale(-1 1) rotate(60 0 {})",
-                SKETCH_SIZE / 2.0,
-                0.0,
-                SKETCH_SIZE / 2.0
+    let build_group = |index: u8| -> [Group; 2] {
+        [
+            group_base.clone().set(
+                "transform",
+                format!(
+                    "translate({} {}) rotate({} 0 {})",
+                    SKETCH_HALF_SIZE,
+                    0.0,
+                    (index as u16) * 60,
+                    SKETCH_HALF_SIZE,
+                ),
             ),
-        );
-
-    let group31 = (0..=16)
-        .fold(Group::new(), |acc, index| acc.add(build_line(index)))
-        .set(
-            "transform",
-            format!(
-                "translate({} {}) scale(-1 1) rotate(120 0 {})",
-                SKETCH_SIZE / 2.0,
-                0.0,
-                SKETCH_SIZE / 2.0
+            group_base.clone().set(
+                "transform",
+                format!(
+                    "translate({} {}) scale(-1 1) rotate({} 0 {})",
+                    SKETCH_HALF_SIZE,
+                    0.0,
+                    (index as u16) * 60,
+                    SKETCH_HALF_SIZE,
+                ),
             ),
-        );
+        ]
+    };
 
-    let group41 = (0..=16)
-        .fold(Group::new(), |acc, index| acc.add(build_line(index)))
-        .set(
-            "transform",
-            format!(
-                "translate({} {}) scale(-1 1) rotate(180 0 {})",
-                SKETCH_SIZE / 2.0,
-                0.0,
-                SKETCH_SIZE / 2.0
-            ),
-        );
+    let build_text = |segment: u8, row: u8, col: u8, digits: &Vec<Vec<u16>>| -> SvgText {
+        let x = (col as f32) * line_offset + half_line_offset;
+        let y = (row as f32) * CELL_HALF_SIZE * (-2.0) - CELL_THREE_FOURTHS_SIZE
+            + col as f32 * CELL_HALF_SIZE;
+        let angle = (segment as f32) * 60.0_f32.to_radians();
+        let text = digits[15 - row as usize][col as usize].to_string();
+        let initial_position = Vec2::new(x, y);
+        let rotation = Mat2::from_angle(angle);
+        let position = text_translation + rotation * initial_position;
 
-    let group51 = (0..=16)
-        .fold(Group::new(), |acc, index| acc.add(build_line(index)))
-        .set(
-            "transform",
-            format!(
-                "translate({} {}) scale(-1 1) rotate(240 0 {})",
-                SKETCH_SIZE / 2.0,
-                0.0,
-                SKETCH_SIZE / 2.0
-            ),
-        );
-
-    let group61 = (0..=16)
-        .fold(Group::new(), |acc, index| acc.add(build_line(index)))
-        .set(
-            "transform",
-            format!(
-                "translate({} {}) scale(-1 1) rotate(300 0 {})",
-                SKETCH_SIZE / 2.0,
-                0.0,
-                SKETCH_SIZE / 2.0
-            ),
-        );
+        SvgText::new()
+            .set("x", position.x)
+            .set("y", position.y)
+            .set("font-family", "sans-serif")
+            .set("font-size", "40px")
+            .set("text-anchor", "middle")
+            .set("dominant-baseline", "middle")
+            .add(SvgTextNode::new(text))
+    };
 
     let svg = Document::new()
         .set("width", SKETCH_SIZE as i32)
@@ -417,18 +345,15 @@ fn generate_svg_mandala() -> Document {
             "viewBox",
             format!("0 0 {} {}", SKETCH_SIZE as i32, SKETCH_SIZE as i32),
         )
-        .add(group1)
-        .add(group2)
-        .add(group3)
-        .add(group4)
-        .add(group5)
-        .add(group6)
-        .add(group11)
-        .add(group21)
-        .add(group31)
-        .add(group41)
-        .add(group51)
-        .add(group61);
+        .add(build_text(1, 2, 2, &digits));
 
-    svg
+    (0..6).fold(svg, |acc, segment| {
+        let [group1, group2] = build_group(segment);
+
+        (0..16).fold(acc.add(group1).add(group2), |acc, row| {
+            (0..row + 1).fold(acc, |acc, col| {
+                acc.add(build_text(segment as u8, row as u8, col as u8, &digits))
+            })
+        })
+    })
 }
