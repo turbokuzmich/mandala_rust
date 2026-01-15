@@ -2,7 +2,7 @@ mod calculation;
 
 use calculation::calculate_mandala;
 use iced::widget::canvas::{Cache, Canvas, Geometry, Program, Text};
-use iced::widget::{TextInput, button, column, container, text};
+use iced::widget::{TextInput, button, column, container, row, text};
 use iced::{
     Color, Element, Fill, Pixels, Point, Rectangle, Renderer, Result as IcedResult, Size, Theme,
     alignment, application, color,
@@ -43,6 +43,7 @@ enum Message {
     Type(String),
     Submit,
     Return,
+    Print,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -135,6 +136,19 @@ impl State {
                 self.input = "".to_string();
                 self.calculation = Err("Введите текст для мандалы".to_string());
             }
+            Message::Print => {
+                let pdf_bytes = save_svg_as_pdf(
+                    generate_svg_mandala(&self.calculation.as_ref().unwrap()),
+                    &self.input,
+                )
+                .unwrap();
+
+                let downloads_dir = dirs::download_dir().unwrap();
+
+                std::fs::write(downloads_dir.join("mandala.pdf"), pdf_bytes)
+                    .map_err(|e| e.to_string())
+                    .unwrap();
+            }
         }
     }
     fn view(&self) -> Element<'_, Message> {
@@ -172,7 +186,11 @@ impl State {
                     column![
                         text(&self.input).size(20),
                         Canvas::new(Mandala::new(result)).width(Fill).height(Fill),
-                        button("Назад").on_press(Message::Return),
+                        row![
+                            button("Назад").on_press(Message::Return),
+                            button("Сохранить").on_press(Message::Print)
+                        ]
+                        .spacing(10),
                     ]
                     .width(Fill)
                     .spacing(10)
@@ -199,26 +217,12 @@ impl Default for State {
 }
 
 fn main() -> IcedResult {
-    // let app = application("Мандала", State::update, State::view);
+    let app = application("Мандала", State::update, State::view);
 
-    // app.run()
-
-    let text = "Программисты очень не любят собирать мандалы, потому что они очень сложные, но есть слово «нужно»";
-    let digits = calculate_mandala(text).unwrap();
-    println!("{:?}", digits);
-
-    let svg = generate_svg_mandala(&digits);
-    let saved = save_svg_as_pdf(svg, text);
-
-    match saved {
-        Ok(()) => println!("PDF saved successfully"),
-        Err(e) => println!("Error saving PDF: {}", e),
-    }
-
-    Ok(())
+    app.run()
 }
 
-fn save_svg_as_pdf(svg: Document, text: &str) -> Result<(), String> {
+fn save_svg_as_pdf(svg: Document, text: &str) -> Result<Vec<u8>, String> {
     let mut document = PdfDocument::new("Mandala");
 
     let sketch_svg = Svg::parse(&svg.to_string(), &mut Vec::new()).map_err(|e| e.to_string())?;
@@ -259,9 +263,7 @@ fn save_svg_as_pdf(svg: Document, text: &str) -> Result<(), String> {
         .with_pages(vec![page])
         .save(&PdfSaveOptions::default(), &mut Vec::new());
 
-    std::fs::write("mandala.pdf", bytes).map_err(|e| e.to_string())?;
-
-    Ok(())
+    Ok(bytes)
 }
 
 fn generate_svg_mandala(digits: &Vec<Vec<u16>>) -> Document {
