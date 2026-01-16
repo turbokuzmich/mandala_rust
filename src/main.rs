@@ -4,10 +4,10 @@ use calculation::calculate_mandala;
 use iced::widget::canvas::{Cache, Canvas, Geometry, Program, Text};
 use iced::widget::{TextInput, button, column, container, row, text};
 use iced::{
-    Color, Element, Fill, Pixels, Point, Rectangle, Renderer, Result as IcedResult, Size, Theme,
-    alignment, application, color,
+    Color, Element, Fill, Pixels, Point, Rectangle, Renderer, Result as IcedResult, Size, Task,
+    Theme, Vector, alignment, application, color, mouse,
 };
-use iced::{Vector, mouse};
+use std::path::PathBuf;
 
 use svg::Document;
 use svg::node::Text as SvgTextNode;
@@ -43,7 +43,8 @@ enum Message {
     Type(String),
     Submit,
     Return,
-    Print,
+    Export,
+    Exported(Result<PathBuf, ()>),
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -119,35 +120,48 @@ struct State {
     screen: Screen,
     input: String,
     calculation: Result<Vec<Vec<u16>>, String>,
+    export: Result<PathBuf, ()>,
 }
 
 impl State {
-    fn update(&mut self, message: Message) {
+    fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Type(text) => {
                 self.input = text;
+                Task::none()
             }
             Message::Submit => {
                 self.screen = Screen::Result;
                 self.calculation = calculate_mandala(&self.input);
+                Task::none()
             }
             Message::Return => {
                 self.screen = Screen::Input;
                 self.input = "".to_string();
                 self.calculation = Err("Введите текст для мандалы".to_string());
+                Task::none()
             }
-            Message::Print => {
-                let pdf_bytes = save_svg_as_pdf(
-                    generate_svg_mandala(&self.calculation.as_ref().unwrap()),
-                    &self.input,
+            Message::Export => {
+                let calculation = self.calculation.to_owned().unwrap();
+                let input = self.input.to_owned();
+
+                Task::perform(
+                    async move {
+                        let pdf_bytes =
+                            save_svg_as_pdf(generate_svg_mandala(&calculation), &input).unwrap();
+
+                        let export_path = dirs::download_dir().unwrap().join("mandala.pdf");
+
+                        std::fs::write(&export_path, pdf_bytes).unwrap();
+
+                        Ok(export_path)
+                    },
+                    Message::Exported,
                 )
-                .unwrap();
-
-                let downloads_dir = dirs::download_dir().unwrap();
-
-                std::fs::write(downloads_dir.join("mandala.pdf"), pdf_bytes)
-                    .map_err(|e| e.to_string())
-                    .unwrap();
+            }
+            Message::Exported(result) => {
+                self.export = result;
+                Task::none()
             }
         }
     }
@@ -188,7 +202,7 @@ impl State {
                         Canvas::new(Mandala::new(result)).width(Fill).height(Fill),
                         row![
                             button("Назад").on_press(Message::Return),
-                            button("Сохранить").on_press(Message::Print)
+                            button("Сохранить").on_press(Message::Export)
                         ]
                         .spacing(10),
                     ]
@@ -212,6 +226,7 @@ impl Default for State {
             screen: Screen::Input,
             input: "".to_string(),
             calculation: Err("Введите текст для мандалы".to_string()),
+            export: Err(()),
         }
     }
 }
