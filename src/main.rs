@@ -44,13 +44,20 @@ enum Message {
     Submit,
     Return,
     Export,
-    Exported(Result<PathBuf, ()>),
+    Exported(Result<PathBuf, String>),
 }
 
 #[derive(Debug, Copy, Clone)]
 enum Screen {
     Input,
     Result,
+}
+
+#[derive(Debug, Clone)]
+enum ExportState {
+    Idle,
+    Saving,
+    Completed(Result<PathBuf, String>),
 }
 
 struct Mandala<'a> {
@@ -120,7 +127,7 @@ struct State {
     screen: Screen,
     input: String,
     calculation: Result<Vec<Vec<u16>>, String>,
-    export: Result<PathBuf, ()>,
+    export: ExportState,
 }
 
 impl State {
@@ -128,39 +135,33 @@ impl State {
         match message {
             Message::Type(text) => {
                 self.input = text;
+
                 Task::none()
             }
             Message::Submit => {
                 self.screen = Screen::Result;
                 self.calculation = calculate_mandala(&self.input);
+
                 Task::none()
             }
             Message::Return => {
                 self.screen = Screen::Input;
                 self.input = "".to_string();
                 self.calculation = Err("Введите текст для мандалы".to_string());
+
                 Task::none()
             }
             Message::Export => {
+                self.export = ExportState::Saving;
+
                 let calculation = self.calculation.to_owned().unwrap();
                 let input = self.input.to_owned();
 
-                Task::perform(
-                    async move {
-                        let pdf_bytes =
-                            save_svg_as_pdf(generate_svg_mandala(&calculation), &input).unwrap();
-
-                        let export_path = dirs::download_dir().unwrap().join("mandala.pdf");
-
-                        std::fs::write(&export_path, pdf_bytes).unwrap();
-
-                        Ok(export_path)
-                    },
-                    Message::Exported,
-                )
+                Task::perform(save_mandala_pdf(calculation, input), Message::Exported)
             }
             Message::Exported(result) => {
-                self.export = result;
+                self.export = ExportState::Completed(result);
+
                 Task::none()
             }
         }
@@ -226,7 +227,7 @@ impl Default for State {
             screen: Screen::Input,
             input: "".to_string(),
             calculation: Err("Введите текст для мандалы".to_string()),
-            export: Err(()),
+            export: ExportState::Idle,
         }
     }
 }
@@ -237,12 +238,23 @@ fn main() -> IcedResult {
     app.run()
 }
 
-fn save_svg_as_pdf(svg: Document, text: &str) -> Result<Vec<u8>, String> {
+async fn save_mandala_pdf(calculation: Vec<Vec<u16>>, input: String) -> Result<PathBuf, String> {
+    let pdf_bytes = generate_mandala_pdf(generate_mandala_svg(&calculation), &input)?;
+
+    let export_path = dirs::download_dir().unwrap().join("mandala.pdf");
+
+    std::fs::write(&export_path, pdf_bytes).map_err(|_| "Failed to write PDF file")?;
+
+    Ok(export_path)
+}
+
+fn generate_mandala_pdf(svg: Document, text: &str) -> Result<Vec<u8>, String> {
     let mut document = PdfDocument::new("Mandala");
 
-    let sketch_svg = Svg::parse(&svg.to_string(), &mut Vec::new()).map_err(|e| e.to_string())?;
+    let sketch_svg = Svg::parse(&svg.to_string(), &mut Vec::new())?;
     let sketch_id = document.add_xobject(&sketch_svg);
-    let roboto_font = ParsedFont::from_bytes(ROBOTO_FONT, 0, &mut Vec::new()).unwrap();
+    let roboto_font = ParsedFont::from_bytes(ROBOTO_FONT, 0, &mut Vec::new())
+        .ok_or("Failed to parse Roboto font")?;
     let roboto_font_id = document.add_font(&roboto_font);
 
     let text_options = TextShapingOptions {
@@ -281,7 +293,7 @@ fn save_svg_as_pdf(svg: Document, text: &str) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-fn generate_svg_mandala(digits: &Vec<Vec<u16>>) -> Document {
+fn generate_mandala_svg(digits: &Vec<Vec<u16>>) -> Document {
     const SKETCH_HALF_SIZE: f32 = SKETCH_SIZE / 2.0;
     const CELL_HALF_SIZE: f32 = SKETCH_HALF_SIZE / 33.0;
     const CELL_THREE_FOURTHS_SIZE: f32 = CELL_HALF_SIZE + CELL_HALF_SIZE / 2.0;
