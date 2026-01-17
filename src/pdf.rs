@@ -76,7 +76,8 @@ pub async fn save_mandala_pdf(
         .with_pages(vec![page])
         .save(&PdfSaveOptions::default(), &mut Vec::new());
 
-    let export_path = dirs::download_dir().unwrap().join("mandala.pdf");
+    let file_name = input.chars().take(100).collect::<String>();
+    let export_path = dirs::download_dir().unwrap().join(&format!("Мандала {}.pdf", file_name));
 
     std::fs::write(&export_path, pdf_bytes).map_err(|_| "Failed to write PDF file")?;
 
