@@ -375,6 +375,7 @@ fn generate_mandala_svg(digits: &Vec<Vec<u16>>) -> Document {
         SvgText::new()
             .set("x", position.x)
             .set("y", position.y)
+            .set("fill", "black")
             .set("font-family", "sans-serif")
             .set("font-size", "40px")
             .set("text-anchor", "middle")
