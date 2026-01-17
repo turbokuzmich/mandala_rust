@@ -10,3 +10,4 @@ printpdf = { version = "0.8.2", features = ["text_layout"] }
 dirs = "5.0"
 glam = "0.30.10"
 tokio = { version = "1", features = ["rt-multi-thread"] }
+opener = { version = "0.8.3", features = ["reveal"] }
