@@ -148,6 +148,7 @@ impl State {
                 self.screen = Screen::Input;
                 self.input = "".to_string();
                 self.calculation = Err("Введите текст для мандалы".to_string());
+                self.export = ExportState::Idle;
 
                 Task::none()
             }
@@ -197,24 +198,38 @@ impl State {
                 .into()
             }
             Screen::Result => match &self.calculation {
-                Ok(result) => container(
-                    column![
-                        text(&self.input).size(20),
-                        Canvas::new(Mandala::new(result)).width(Fill).height(Fill),
-                        row![
-                            button("Назад").on_press(Message::Return),
-                            button("Сохранить").on_press(Message::Export)
+                Ok(result) => {
+                    let notification: Element<'_, Message> = match self.export {
+                        ExportState::Idle => {
+                            text("Нажмите «Сохранить» для сохранения мандалы в PDF").into()
+                        }
+                        ExportState::Saving => text("Сохранение...").into(),
+                        ExportState::Completed(ref result) => match result {
+                            Ok(path) => text(format!("Сохранено в {}", path.display())).into(),
+                            Err(error) => text(format!("Ошибка: {}", error)).into(),
+                        },
+                    };
+
+                    container(
+                        column![
+                            text(&self.input).size(20),
+                            Canvas::new(Mandala::new(result)).width(Fill).height(Fill),
+                            row![
+                                button("Назад").on_press(Message::Return),
+                                button("Сохранить").on_press(Message::Export)
+                            ]
+                            .spacing(10),
+                            notification,
                         ]
-                        .spacing(10),
-                    ]
-                    .width(Fill)
-                    .spacing(10)
-                    .align_x(alignment::Horizontal::Center),
-                )
-                .height(Fill)
-                .align_y(alignment::Vertical::Center)
-                .padding(20)
-                .into(),
+                        .width(Fill)
+                        .spacing(10)
+                        .align_x(alignment::Horizontal::Center),
+                    )
+                    .height(Fill)
+                    .align_y(alignment::Vertical::Center)
+                    .padding(20)
+                    .into()
+                }
                 Err(error) => text(error).into(),
             },
         }
